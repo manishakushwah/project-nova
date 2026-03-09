@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOVA GPT</title>
+  <link rel="stylesheet" href="style.css">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+    integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+
+<body>
+
+  <div class="hero">
+    <header>
+      <div class="logo">NOVA</div>
+      <div class="nav-right">
+        <button id="mode-btn"><i class="fa-solid fa-circle-half-stroke"></i></button>
+        <button id="loginBtn" class="btn-outline">Login</button>
+        <button id="registerBtn" class="btn-outline">Register</button>
+      </div><!--nav-right-->
+    </header>
+
+    <div class="hero-content">
+      <h1>HELLO, I'M NOVA</h1>
+      <p>Your intelligent AI companion for every conversation</p>
+      <button id="getStartBtn" class="btn-main">Get Started</button>
+    </div><!--hero-content-->
+
+    <div class="cards">
+      <div class="card">⚡ Lightning Fast</div>
+      <div class="card">💬 Natural Chat</div>
+      <div class="card">🔒 Secure & Private</div>
+    </div><!--cards-->
+
+  </div><!--hero-->
+
+  <!-- LOGIN FORM -->
+  <div class="modal" id="loginModal">
+    <div class="modal-box">
+      <span class="close">&times;</span>
+      <h2>Login</h2>
+      <input type="email" id="logEmail" placeholder="Email">
+      <input type="password" id="logPassword" placeholder="Password">
+      <button id="doLoginBtn" class="btn-main">Login</button>
+    </div>
+  </div>
+
+  <!-- REGISTER FORM -->
+  <div class="modal" id="registerModal">
+    <div class="modal-box">
+      <span class="close">&times;</span>
+      <h2>Register</h2>
+      <input type="text" id="regName" placeholder="Full Name">
+      <input type="email" id="regEmail" placeholder="Email">
+      <input type="password" id="regPassword" placeholder="Password">
+      <button id="doRegisterBtn" class="btn-main">Register</button>
+    </div>
+  </div>
+
+  <!-- PROFILE FORM -->
+  <div class="modal" id="profileModal">
+    <div class="modal-box">
+      <span class="close">&times;</span>
+      <h2>My Profile</h2>
+      <p style="text-align:center; font-size:13px; opacity:0.8; margin-top:-10px;">NOVA uses this info to remember you
+        forever.</p>
+      <input type="text" id="profName" placeholder="Your Name">
+      <input type="number" id="profAge" placeholder="Your Age">
+      <textarea id="profPrefs" placeholder="Any preferences? (e.g. Keep answers short, call me captain)"
+        style="padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.1); color:#fff; outline:none; resize:none; height:80px; font-family:inherit; transition:0.3s;"></textarea>
+      <button id="saveProfileBtn" class="btn-main">Save Profile</button>
+    </div>
+  </div>
+
+  <!-- NEW CHAT UI -->
+  <div class="chat-container hide" id="chatContainer">
+    <!-- Sidebar -->
+    <div class="chat-sidebar" id="chatSidebar">
+      <div class="sidebar-header">
+        <h2>NOVA</h2>
+        <button id="newChatBtn" class="btn-outline"><i class="fa-solid fa-plus"></i> New</button>
+      </div>
+      <div class="chat-history-title">Recent Chats</div>
+      <div class="chat-history" id="chatHistory">
+        <!-- Chat history items will appear here -->
+      </div>
+      <div class="sidebar-footer">
+        <button id="logoutBtn" class="btn-outline"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+      </div>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="chat-main">
+      <header class="chat-header">
+        <div class="logo" id="mobileLogo">NOVA</div>
+        <div>
+          <button id="profileBtn" class="mode-btn" title="Profile Settings"><i class="fa-solid fa-user"></i></button>
+          <button id="chatModeBtn" class="mode-btn"><i class="fa-solid fa-circle-half-stroke"></i></button>
+          <button id="sidebarToggleBtn" class="mode-btn mobile-only"><i class="fa-solid fa-bars"></i></button>
+        </div>
+      </header>
+
+      <div class="chat-box" id="chatBox">
+        <!-- Messages will appear here -->
+        <div class="message ai-message">
+          <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+          <div class="msg-content">Hello! I'm NOVA. How can I help you today?</div>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <button id="micBtn" class="mic-btn"><i class="fa-solid fa-microphone"></i></button>
+        <input type="text" id="chatInput" placeholder="Message NOVA...">
+        <button id="sendBtn" class="send-btn"><i class="fa-solid fa-paper-plane"></i></button>
+      </div>
+      <div id="recordingIndicator" class="recording-indicator hide">Listening...</div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-auth-compat.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-firestore-compat.min.js"></script>
+  <script defer src="script.js"></script>
+</body>
+
+</html>
