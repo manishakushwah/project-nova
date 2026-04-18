@@ -43,6 +43,7 @@ let globalUserProfile = null;
 let isRecording = false;
 let mediaRecorder = null;
 let currentAudio = null;
+let isImageGenMode = false;
 
 // ---------------- MODE TOGGLE ----------------
 
@@ -58,6 +59,22 @@ if (chatModeBtn) chatModeBtn.addEventListener("click", toggleMode);
 if (sidebarToggleBtn) {
   sidebarToggleBtn.addEventListener("click", () => {
     chatSidebar.classList.toggle("active");
+  });
+}
+
+// ---------------- IMAGE GENERATION TOGGLE ----------------
+
+const imgGenBtn = document.getElementById("imgGenBtn");
+
+if (imgGenBtn) {
+  imgGenBtn.addEventListener("click", () => {
+    isImageGenMode = !isImageGenMode;
+    imgGenBtn.classList.toggle("active", isImageGenMode);
+    if (isImageGenMode) {
+      chatInput.placeholder = "Describe an image to generate...";
+    } else {
+      chatInput.placeholder = "Message NOVA...";
+    }
   });
 }
 
@@ -118,11 +135,16 @@ closeBtns.forEach((btn) => {
 if (doRegisterBtn) {
   doRegisterBtn.addEventListener("click", async () => {
     try {
-      const userCredential = await auth.createUserWithEmailAndPassword(regEmail.value, regPassword.value);
+      const userCredential = await auth.createUserWithEmailAndPassword(
+        regEmail.value,
+        regPassword.value,
+      );
       await userCredential.user.updateProfile({ displayName: regName.value });
       alert("Registration successful!");
       registerModal.classList.remove("active");
-    } catch (error) { alert(error.message); }
+    } catch (error) {
+      alert(error.message);
+    }
   });
 }
 
@@ -131,7 +153,9 @@ if (doLoginBtn) {
     try {
       await auth.signInWithEmailAndPassword(logEmail.value, logPassword.value);
       loginModal.classList.remove("active");
-    } catch (error) { alert(error.message); }
+    } catch (error) {
+      alert(error.message);
+    }
   });
 }
 
@@ -142,13 +166,16 @@ if (saveProfileBtn) {
       globalUserProfile = {
         name: profName.value,
         age: profAge.value,
-        prefs: profPrefs.value
+        prefs: profPrefs.value,
       };
-      await db.collection("users").doc(auth.currentUser.uid).set(globalUserProfile, { merge: true });
+      await db
+        .collection("users")
+        .doc(auth.currentUser.uid)
+        .set(globalUserProfile, { merge: true });
       alert("Profile saved!");
       profileModal.classList.remove("active");
-    } catch(e) {
-      alert("Error saving profile: "+e.message);
+    } catch (e) {
+      alert("Error saving profile: " + e.message);
     }
   });
 }
@@ -164,7 +191,9 @@ async function loadUserProfile() {
       if (profAge) profAge.value = globalUserProfile.age || "";
       if (profPrefs) profPrefs.value = globalUserProfile.prefs || "";
     }
-  } catch(e) { console.error("Profile load err:", e); }
+  } catch (e) {
+    console.error("Profile load err:", e);
+  }
 }
 
 // logout
@@ -217,7 +246,7 @@ function startNewChat() {
 
   chatBox.innerHTML = `
   <div class="message ai-message">
-  <div class="avatar">BOT</div>
+  <div class="avatar"><img src="images/logo.png" alt="Nova" class="avatar-img"></div>
   <div class="msg-content">
   Hello ${auth.currentUser?.displayName || ""}! How can I help?
   </div>
@@ -232,13 +261,19 @@ newChatBtn.addEventListener("click", startNewChat);
 async function saveChat() {
   if (!auth.currentUser || !currentChatId) return;
   try {
-    const firstUserMsg = currentChatHistory.find(m => m.role === "user");
-    const title = firstUserMsg ? firstUserMsg.content.substring(0, 40) : "New Chat";
-    await db.collection("users").doc(auth.currentUser.uid)
-      .collection("chats").doc(currentChatId).set({
+    const firstUserMsg = currentChatHistory.find((m) => m.role === "user");
+    const title = firstUserMsg
+      ? firstUserMsg.content.substring(0, 40)
+      : "New Chat";
+    await db
+      .collection("users")
+      .doc(auth.currentUser.uid)
+      .collection("chats")
+      .doc(currentChatId)
+      .set({
         title: title,
         messages: currentChatHistory,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
     loadChatHistory();
   } catch (e) {
@@ -249,8 +284,12 @@ async function saveChat() {
 async function loadChatHistory() {
   if (!auth.currentUser) return;
   try {
-    const snapshot = await db.collection("users").doc(auth.currentUser.uid)
-      .collection("chats").orderBy("updatedAt", "desc").get();
+    const snapshot = await db
+      .collection("users")
+      .doc(auth.currentUser.uid)
+      .collection("chats")
+      .orderBy("updatedAt", "desc")
+      .get();
     renderChatHistory(snapshot.docs);
   } catch (e) {
     console.error("Load history error:", e);
@@ -259,15 +298,18 @@ async function loadChatHistory() {
 
 function renderChatHistory(docs) {
   chatHistoryList.innerHTML = "";
-  docs.forEach(doc => {
+  docs.forEach((doc) => {
     const data = doc.data();
     const item = document.createElement("div");
-    item.className = "history-item" + (doc.id === currentChatId ? " active" : "");
+    item.className =
+      "history-item" + (doc.id === currentChatId ? " active" : "");
     item.innerHTML = `
       <span>${data.title || "Untitled"}</span>
       <button class="delete-chat-btn" title="Delete"><i class="fa-solid fa-trash"></i></button>
     `;
-    item.querySelector("span").addEventListener("click", () => loadChat(doc.id, data));
+    item
+      .querySelector("span")
+      .addEventListener("click", () => loadChat(doc.id, data));
     item.querySelector(".delete-chat-btn").addEventListener("click", (e) => {
       e.stopPropagation();
       deleteChat(doc.id);
@@ -280,13 +322,13 @@ function loadChat(chatId, data) {
   currentChatId = chatId;
   currentChatHistory = data.messages || [];
   chatBox.innerHTML = "";
-  currentChatHistory.forEach(m => {
+  currentChatHistory.forEach((m) => {
     if (m.role !== "system") renderMessage(m.role, m.content);
   });
   if (chatBox.innerHTML === "") {
     chatBox.innerHTML = `
       <div class="message ai-message">
-        <div class="avatar">🤖</div>
+        <div class="avatar"><img src="images/logo.png" alt="Nova" class="avatar-img"></div>
         <div class="msg-content">Hello! How can I help?</div>
       </div>
     `;
@@ -297,8 +339,12 @@ function loadChat(chatId, data) {
 async function deleteChat(chatId) {
   if (!auth.currentUser) return;
   try {
-    await db.collection("users").doc(auth.currentUser.uid)
-      .collection("chats").doc(chatId).delete();
+    await db
+      .collection("users")
+      .doc(auth.currentUser.uid)
+      .collection("chats")
+      .doc(chatId)
+      .delete();
     if (chatId === currentChatId) startNewChat();
     loadChatHistory();
   } catch (e) {
@@ -316,14 +362,14 @@ function renderMessage(role, content) {
     msgDiv.classList.add("user-message");
 
     msgDiv.innerHTML = `
-    <div class="avatar">🙂</div>
+    <div class="avatar"><img src="images/user.png" alt="Nova" class="avatar-img"></div>
     <div class="msg-content">${content}</div>
     `;
   } else {
     msgDiv.classList.add("ai-message");
 
     let cleanMsg = content;
-    
+
     // Sarvam's model uses <think> tags but often doesn't close them.
     // Simply strip the tags and keep the content.
     cleanMsg = cleanMsg.replace(/<\/?think>/gi, "").trim();
@@ -338,12 +384,14 @@ function renderMessage(role, content) {
       .replace(/\n/g, "<br>");
 
     msgDiv.innerHTML = `
-    <div class="avatar">🤖</div>
-    <div class="msg-content">
-      <button class="tts-btn"><i class="fa-solid fa-volume-high"></i></button>
-      <div class="msg-text">${formattedHtml}</div>
-    </div>
-    `;
+  <div class="avatar">
+    <img src="images/logo.png" alt="Nova" class="avatar-img">
+  </div>
+  <div class="msg-content">
+    <button class="tts-btn"><i class="fa-solid fa-volume-high"></i></button>
+    <div class="msg-text">${formattedHtml}</div>
+  </div>
+`;
 
     const btn = msgDiv.querySelector(".tts-btn");
 
@@ -365,6 +413,11 @@ async function sendMessage() {
 
   if (!msg) return;
 
+  if (isImageGenMode) {
+    await generateImage(msg);
+    return;
+  }
+
   renderMessage("user", msg);
 
   chatInput.value = "";
@@ -381,7 +434,7 @@ async function sendMessage() {
   typing.classList.add("message", "ai-message");
 
   typing.innerHTML = `
-  <div class="avatar">🤖</div>
+  <div class="avatar"><img src="images/logo.png" alt="Nova" class="avatar-img"></div>
   <div class="msg-content">...</div>
   `;
 
@@ -417,6 +470,83 @@ async function sendMessage() {
 
     renderMessage("assistant", "Server error");
   }
+}
+
+// ---------------- IMAGE GENERATION ----------------
+
+function generateImage(prompt) {
+  renderMessage("user", `🎨 Generate image: ${prompt}`);
+
+  chatInput.value = "";
+
+  currentChatHistory.push({
+    role: "user",
+    content: `🎨 Generate image: ${prompt}`,
+  });
+
+  const encodedPrompt = encodeURIComponent(prompt);
+  const imageUrl = `https://gen.pollinations.ai/image/${encodedPrompt}?model=flux&key=pk_jmA19hPC2hmPW6eq`;
+
+  // Image src is set immediately — browser loads it whenever the API is ready
+  // Image overlays the shimmer and covers it once loaded
+  const msgDiv = document.createElement("div");
+  msgDiv.classList.add("message", "ai-message");
+  msgDiv.innerHTML = `
+    <div class="avatar"><img src="images/logo.png" alt="Nova" class="avatar-img"></div>
+    <div class="msg-content img-msg-content">
+      <div class="generated-image-wrapper">
+        <div class="shimmer-placeholder">
+          <div class="shimmer-icon"><i class="fa-solid fa-image"></i></div>
+          <div class="shimmer-text">Generating your image...</div>
+        </div>
+        <img src="${imageUrl}" alt="${prompt}" class="generated-image" crossorigin="anonymous">
+        <button class="img-download-btn" title="Download Image">
+          <i class="fa-solid fa-download"></i>
+        </button>
+      </div>
+      <div class="img-caption">🎨 ${prompt}</div>
+    </div>
+  `;
+
+  chatBox.appendChild(msgDiv);
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  // When image loads, hide shimmer and enable download
+  const img = msgDiv.querySelector(".generated-image");
+  const shimmer = msgDiv.querySelector(".shimmer-placeholder");
+  const dlBtn = msgDiv.querySelector(".img-download-btn");
+
+  img.onload = () => {
+    shimmer.style.opacity = "0";
+    setTimeout(() => shimmer.remove(), 400);
+    dlBtn.style.pointerEvents = "auto";
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    currentChatHistory.push({
+      role: "assistant",
+      content: `[Generated image: ${prompt}]`,
+    });
+    saveChat();
+  };
+
+  // Download via canvas (avoids opening new tab)
+  dlBtn.addEventListener("click", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `nova-${prompt.substring(0, 30).replace(/[^a-zA-Z0-9]/g, "_")}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  });
 }
 
 sendBtn.onclick = sendMessage;
@@ -466,11 +596,23 @@ async function playTTS(text, btn) {
       // Play current chunk
       const url = URL.createObjectURL(audioBlob);
       await new Promise((resolve) => {
-        if (currentTTSBtn !== btn) { URL.revokeObjectURL(url); return resolve(); }
+        if (currentTTSBtn !== btn) {
+          URL.revokeObjectURL(url);
+          return resolve();
+        }
         currentAudio = new Audio(url);
-        currentAudio.onended = () => { URL.revokeObjectURL(url); resolve(); };
-        currentAudio.onerror = () => { URL.revokeObjectURL(url); resolve(); }; // Don't break loop on error
-        currentAudio.play().catch(() => { URL.revokeObjectURL(url); resolve(); });
+        currentAudio.onended = () => {
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        currentAudio.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve();
+        }; // Don't break loop on error
+        currentAudio.play().catch(() => {
+          URL.revokeObjectURL(url);
+          resolve();
+        });
       });
     }
   } catch (error) {
@@ -504,7 +646,7 @@ async function fetchTTSAudio(chunkText) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: chunkText }),
-      signal: ttsAbortController.signal
+      signal: ttsAbortController.signal,
     });
     if (!res.ok) return null;
     return await res.blob();
@@ -579,12 +721,12 @@ function stopRecording() {
       chatInput.disabled = false;
       return;
     }
-    
+
     chatInput.placeholder = "Processing audio...";
-    
+
     const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
     await processAudio(blob);
-    
+
     chatInput.placeholder = "Message NOVA...";
     chatInput.disabled = false;
   };
@@ -601,35 +743,43 @@ function stopRecording() {
 
 async function processAudio(blob) {
   try {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const audioContext = new (
+      window.AudioContext || window.webkitAudioContext
+    )();
     const arrayBuffer = await blob.arrayBuffer();
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    
+
     const duration = audioBuffer.duration;
     const chunkDuration = 29.5; // Use slightly under 30 seconds
     const numChunks = Math.ceil(duration / chunkDuration);
     const sampleRate = audioBuffer.sampleRate;
-    
+
     const promises = [];
     for (let i = 0; i < numChunks; i++) {
       const startOffset = Math.floor(i * chunkDuration * sampleRate);
-      const endOffset = Math.min(Math.floor((i + 1) * chunkDuration * sampleRate), audioBuffer.length);
+      const endOffset = Math.min(
+        Math.floor((i + 1) * chunkDuration * sampleRate),
+        audioBuffer.length,
+      );
       const chunkLength = endOffset - startOffset;
-      
+
       const chunkBlob = bufferToWav(audioBuffer, startOffset, chunkLength);
       promises.push(sendToSTT(chunkBlob, i));
     }
-    
+
     const results = await Promise.all(promises);
     results.sort((a, b) => a.index - b.index);
-    
-    const fullText = results.map(r => r.text).filter(t => t).join(" ");
-    
+
+    const fullText = results
+      .map((r) => r.text)
+      .filter((t) => t)
+      .join(" ");
+
     if (fullText) {
       if (chatInput.value) chatInput.value += " " + fullText;
       else chatInput.value = fullText;
     }
-  } catch(e) {
+  } catch (e) {
     console.error("Audio processing failed:", e);
     alert("Audio processing failed: " + e.message);
   }
@@ -638,7 +788,7 @@ async function processAudio(blob) {
 function bufferToWav(audioBuffer, startOffset, length) {
   const numChannels = audioBuffer.numberOfChannels;
   const sampleRate = audioBuffer.sampleRate;
-  
+
   const interleaved = new Float32Array(length * numChannels);
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = audioBuffer.getChannelData(channel);
@@ -646,14 +796,14 @@ function bufferToWav(audioBuffer, startOffset, length) {
       interleaved[i * numChannels + channel] = channelData[startOffset + i];
     }
   }
-  
+
   const buffer = new ArrayBuffer(44 + interleaved.length * 2);
   const view = new DataView(buffer);
-  
-  writeString(view, 0, 'RIFF');
+
+  writeString(view, 0, "RIFF");
   view.setUint32(4, 36 + interleaved.length * 2, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, numChannels, true);
@@ -661,16 +811,16 @@ function bufferToWav(audioBuffer, startOffset, length) {
   view.setUint32(28, sampleRate * numChannels * 2, true);
   view.setUint16(32, numChannels * 2, true);
   view.setUint16(34, 16, true);
-  writeString(view, 36, 'data');
+  writeString(view, 36, "data");
   view.setUint32(40, interleaved.length * 2, true);
-  
+
   let offset = 44;
   for (let i = 0; i < interleaved.length; i++, offset += 2) {
     let s = Math.max(-1, Math.min(1, interleaved[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
   }
-  
-  return new Blob([view], { type: 'audio/wav' });
+
+  return new Blob([view], { type: "audio/wav" });
 }
 
 function writeString(view, offset, string) {
@@ -682,17 +832,17 @@ function writeString(view, offset, string) {
 async function sendToSTT(blob, index) {
   const formData = new FormData();
   formData.append("audio", blob, `chunk_${index}.wav`);
-  
+
   const res = await fetch(`${API_BASE_URL}/speech-to-text`, {
     method: "POST",
     body: formData,
   });
-  
+
   const data = await res.json();
   console.log(`STT chunk ${index}:`, data);
-  
+
   return {
     index,
-    text: data.transcript || ""
+    text: data.transcript || "",
   };
 }

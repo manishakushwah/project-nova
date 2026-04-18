@@ -4,7 +4,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description"
+    content="NOVA GPT — Your intelligent AI companion for every conversation. Powered by Sarvam AI.">
   <title>NOVA GPT</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="style.css">
 
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
@@ -70,8 +75,7 @@
         forever.</p>
       <input type="text" id="profName" placeholder="Your Name">
       <input type="number" id="profAge" placeholder="Your Age">
-      <textarea id="profPrefs" placeholder="Any preferences? (e.g. Keep answers short, call me captain)"
-        style="padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.1); color:#fff; outline:none; resize:none; height:80px; font-family:inherit; transition:0.3s;"></textarea>
+      <textarea id="profPrefs" placeholder="Any preferences? (e.g. Keep answers short, call me captain)"></textarea>
       <button id="saveProfileBtn" class="btn-main">Save Profile</button>
     </div>
   </div>
@@ -107,13 +111,15 @@
       <div class="chat-box" id="chatBox">
         <!-- Messages will appear here -->
         <div class="message ai-message">
-          <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+          <div class="avatar"><img src="images/logo.png" alt="Nova" class="avatar-img"></div>
           <div class="msg-content">Hello! I'm NOVA. How can I help you today?</div>
         </div>
       </div>
 
       <div class="chat-input-area">
         <button id="micBtn" class="mic-btn"><i class="fa-solid fa-microphone"></i></button>
+        <button id="imgGenBtn" class="img-gen-btn" title="Toggle Image Generation"><i
+            class="fa-solid fa-image"></i></button>
         <input type="text" id="chatInput" placeholder="Message NOVA...">
         <button id="sendBtn" class="send-btn"><i class="fa-solid fa-paper-plane"></i></button>
       </div>
