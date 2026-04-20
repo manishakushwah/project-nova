@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
     integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
@@ -82,6 +83,8 @@
 
   <!-- NEW CHAT UI -->
   <div class="chat-container hide" id="chatContainer">
+    <!-- Sidebar overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
     <!-- Sidebar -->
     <div class="chat-sidebar" id="chatSidebar">
       <div class="sidebar-header">
@@ -100,11 +103,13 @@
     <!-- Main Chat Area -->
     <div class="chat-main">
       <header class="chat-header">
-        <div class="logo" id="mobileLogo">NOVA</div>
+        <div class="chat-header-left">
+          <button id="sidebarToggleBtn" class="mode-btn mobile-only" title="Chat History"><i class="fa-solid fa-bars"></i></button>
+          <div class="logo" id="mobileLogo">NOVA</div>
+        </div>
         <div>
           <button id="profileBtn" class="mode-btn" title="Profile Settings"><i class="fa-solid fa-user"></i></button>
           <button id="chatModeBtn" class="mode-btn"><i class="fa-solid fa-circle-half-stroke"></i></button>
-          <button id="sidebarToggleBtn" class="mode-btn mobile-only"><i class="fa-solid fa-bars"></i></button>
         </div>
       </header>
 
@@ -130,6 +135,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-auth-compat.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-firestore-compat.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script defer src="script.js"></script>
 </body>
 

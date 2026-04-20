@@ -17,6 +17,21 @@ const db = firebase.firestore();
 
 const API_BASE_URL = "http://localhost:5000/api";
 
+// ---------------- MARKED.JS CONFIG ----------------
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  headerIds: false,
+  mangle: false,
+});
+
+// ---------------- CLOUDINARY CONFIG ----------------
+
+const CLOUDINARY_CLOUD = "dlmal78dg";
+const CLOUDINARY_PRESET = "nova_images";
+const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`;
+
 // ---------------- DOM ----------------
 
 const modeBtn = document.getElementById("mode-btn");
@@ -44,6 +59,8 @@ let isRecording = false;
 let mediaRecorder = null;
 let currentAudio = null;
 let isImageGenMode = false;
+let isStreaming = false;
+let streamingChatId = null;
 
 // ---------------- MODE TOGGLE ----------------
 
@@ -56,10 +73,18 @@ if (chatModeBtn) chatModeBtn.addEventListener("click", toggleMode);
 
 // ---------------- SIDEBAR TOGGLE ----------------
 
+const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+function toggleSidebar() {
+  chatSidebar.classList.toggle("active");
+  if (sidebarOverlay) sidebarOverlay.classList.toggle("active");
+}
+
 if (sidebarToggleBtn) {
-  sidebarToggleBtn.addEventListener("click", () => {
-    chatSidebar.classList.toggle("active");
-  });
+  sidebarToggleBtn.addEventListener("click", toggleSidebar);
+}
+if (sidebarOverlay) {
+  sidebarOverlay.addEventListener("click", toggleSidebar);
 }
 
 // ---------------- IMAGE GENERATION TOGGLE ----------------
@@ -235,6 +260,10 @@ function generateChatId() {
 }
 
 function startNewChat() {
+  // Cancel any ongoing streaming
+  isStreaming = false;
+  streamingChatId = null;
+
   currentChatId = generateChatId();
 
   currentChatHistory = [
@@ -354,54 +383,218 @@ async function deleteChat(chatId) {
 
 // ---------------- RENDER ----------------
 
+/**
+ * Clean raw AI content: strip <think> tags, trim whitespace.
+ */
+function cleanAIContent(content) {
+  let cleaned = content.replace(/<\/?think>/gi, "").trim();
+  if (!cleaned) {
+    cleaned = "Sorry, I couldn't generate a response. Please try again.";
+  }
+  return cleaned;
+}
+
+/**
+ * Inject a copy button into every <pre> code block inside a container.
+ */
+function addCopyButtons(container) {
+  container.querySelectorAll("pre").forEach((pre) => {
+    if (pre.querySelector(".copy-code-btn")) return;
+
+    const btn = document.createElement("button");
+    btn.className = "copy-code-btn";
+    btn.innerHTML = '<i class="fa-regular fa-copy"></i>';
+    btn.title = "Copy code";
+
+    btn.addEventListener("click", () => {
+      const code = pre.querySelector("code");
+      const text = code ? code.innerText : pre.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+        btn.classList.add("copied");
+        setTimeout(() => {
+          btn.innerHTML = '<i class="fa-regular fa-copy"></i>';
+          btn.classList.remove("copied");
+        }, 2000);
+      });
+    });
+
+    pre.appendChild(btn);
+  });
+}
+
+/**
+ * Render a message instantly (used for user messages and loading chat history).
+ */
 function renderMessage(role, content) {
   const msgDiv = document.createElement("div");
   msgDiv.classList.add("message");
 
   if (role === "user") {
     msgDiv.classList.add("user-message");
-
+    const escaped = content.replace(/</g, "&lt;").replace(/>/g, "&gt;");
     msgDiv.innerHTML = `
-    <div class="avatar"><img src="images/user.png" alt="Nova" class="avatar-img"></div>
-    <div class="msg-content">${content}</div>
+      <div class="avatar"><img src="images/user.png" alt="User" class="avatar-img"></div>
+      <div class="msg-content">${escaped}</div>
     `;
   } else {
     msgDiv.classList.add("ai-message");
 
-    let cleanMsg = content;
+    // Check if this is a persisted image message: [nova-img:URL|PROMPT]
+    const imgMatch = content.match(/^\[nova-img:(.*?)\|([\s\S]*?)\]$/);
 
-    // Sarvam's model uses <think> tags but often doesn't close them.
-    // Simply strip the tags and keep the content.
-    cleanMsg = cleanMsg.replace(/<\/?think>/gi, "").trim();
+    if (imgMatch) {
+      const imageUrl = imgMatch[1];
+      const prompt = imgMatch[2];
+      msgDiv.innerHTML = `
+        <div class="avatar">
+          <img src="images/logo.png" alt="Nova" class="avatar-img">
+        </div>
+        <div class="msg-content img-msg-content">
+          <div class="generated-image-wrapper">
+            <img src="${imageUrl}" alt="${prompt}" class="generated-image" crossorigin="anonymous">
+            <button class="img-download-btn" title="Download Image">
+              <i class="fa-solid fa-download"></i>
+            </button>
+          </div>
+          <div class="img-caption">🎨 ${prompt}</div>
+        </div>
+      `;
 
-    if (!cleanMsg) {
-      cleanMsg = "Sorry, I couldn't generate a response. Please try again.";
+      const dlBtn = msgDiv.querySelector(".img-download-btn");
+      const imgEl = msgDiv.querySelector(".generated-image");
+      dlBtn.addEventListener("click", () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = imgEl.naturalWidth;
+        canvas.height = imgEl.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(imgEl, 0, 0);
+        canvas.toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `nova-${prompt.substring(0, 30).replace(/[^a-zA-Z0-9]/g, "_")}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, "image/png");
+      });
+
+    } else {
+      // Normal text message — render with markdown
+      const cleanMsg = cleanAIContent(content);
+      const renderedHtml = marked.parse(cleanMsg);
+
+      msgDiv.innerHTML = `
+        <div class="avatar">
+          <img src="images/logo.png" alt="Nova" class="avatar-img">
+        </div>
+        <div class="msg-content">
+          <button class="tts-btn"><i class="fa-solid fa-volume-high"></i></button>
+          <div class="msg-text">${renderedHtml}</div>
+        </div>
+      `;
+
+      // Highlight code blocks
+      msgDiv.querySelectorAll("pre code").forEach((block) => {
+        hljs.highlightElement(block);
+      });
+      addCopyButtons(msgDiv);
+
+      const btn = msgDiv.querySelector(".tts-btn");
+      btn.onclick = () => {
+        const ttsText = cleanMsg.replace(/[*#_=`~\[\]]/g, "").trim();
+        playTTS(ttsText || "No text available.", btn);
+      };
     }
-
-    const safeHtml = cleanMsg.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const formattedHtml = safeHtml
-      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\n/g, "<br>");
-
-    msgDiv.innerHTML = `
-  <div class="avatar">
-    <img src="images/logo.png" alt="Nova" class="avatar-img">
-  </div>
-  <div class="msg-content">
-    <button class="tts-btn"><i class="fa-solid fa-volume-high"></i></button>
-    <div class="msg-text">${formattedHtml}</div>
-  </div>
-`;
-
-    const btn = msgDiv.querySelector(".tts-btn");
-
-    btn.onclick = () => {
-      const ttsText = cleanMsg.replace(/[*#_=]/g, "").trim();
-      playTTS(ttsText || "No text available.", btn);
-    };
   }
 
   chatBox.appendChild(msgDiv);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+/**
+ * Fake-stream an AI message word-by-word with a blinking cursor.
+ * Uses marked.js for incremental markdown rendering.
+ */
+async function streamAIMessage(content) {
+  const cleanMsg = cleanAIContent(content);
+
+  const msgDiv = document.createElement("div");
+  msgDiv.classList.add("message", "ai-message");
+  msgDiv.innerHTML = `
+    <div class="avatar">
+      <img src="images/logo.png" alt="Nova" class="avatar-img">
+    </div>
+    <div class="msg-content">
+      <button class="tts-btn hide"><i class="fa-solid fa-volume-high"></i></button>
+      <div class="msg-text"></div>
+    </div>
+  `;
+  chatBox.appendChild(msgDiv);
+
+  const textEl = msgDiv.querySelector(".msg-text");
+  const ttsBtn = msgDiv.querySelector(".tts-btn");
+
+  // Blinking cursor element
+  const cursor = document.createElement("span");
+  cursor.className = "streaming-cursor";
+  cursor.textContent = "▍";
+
+  // Mark streaming as active
+  isStreaming = true;
+  streamingChatId = currentChatId;
+
+  // Split into tokens: keeps whitespace as separate entries so markdown stays intact
+  const tokens = cleanMsg.split(/(\s+)/);
+  let buffer = "";
+
+  for (let i = 0; i < tokens.length; i++) {
+    // Break if streaming was cancelled (e.g. new chat started)
+    if (!isStreaming || streamingChatId !== currentChatId) break;
+
+    buffer += tokens[i];
+
+    // Re-render markdown every 2 tokens or on the last one
+    if (i % 2 === 0 || i === tokens.length - 1) {
+      textEl.innerHTML = marked.parse(buffer);
+      // Append cursor inside the last element
+      const lastChild = textEl.lastElementChild || textEl;
+      lastChild.appendChild(cursor);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Variable speed for natural feel
+    const word = tokens[i].trim();
+    let delay = 25;
+    if (!word) delay = 5;                              // whitespace — instant
+    else if (word.length > 10) delay = 40;             // long words — slower
+    else if (".!?".includes(word.slice(-1))) delay = 90;  // sentence-end — pause
+    else if (",;:".includes(word.slice(-1))) delay = 55;  // clause — brief pause
+
+    await new Promise((r) => setTimeout(r, delay));
+  }
+
+  // ---- Streaming complete ----
+  isStreaming = false;
+  streamingChatId = null;
+
+  // Final clean render (no cursor, no partial tokens)
+  textEl.innerHTML = marked.parse(cleanMsg);
+
+  // Highlight all code blocks
+  msgDiv.querySelectorAll("pre code").forEach((block) => {
+    hljs.highlightElement(block);
+  });
+  addCopyButtons(msgDiv);
+
+  // Show TTS button
+  ttsBtn.classList.remove("hide");
+  ttsBtn.onclick = () => {
+    const ttsText = cleanMsg.replace(/[*#_=`~\[\]]/g, "").trim();
+    playTTS(ttsText || "No text available.", ttsBtn);
+  };
 
   chatBox.scrollTop = chatBox.scrollHeight;
 }
@@ -410,7 +603,6 @@ function renderMessage(role, content) {
 
 async function sendMessage() {
   const msg = chatInput.value.trim();
-
   if (!msg) return;
 
   if (isImageGenMode) {
@@ -418,8 +610,11 @@ async function sendMessage() {
     return;
   }
 
-  renderMessage("user", msg);
+  // Disable input while processing
+  chatInput.disabled = true;
+  sendBtn.disabled = true;
 
+  renderMessage("user", msg);
   chatInput.value = "";
 
   currentChatHistory.push({
@@ -429,16 +624,17 @@ async function sendMessage() {
 
   saveChat();
 
+  // Animated typing indicator
   const typing = document.createElement("div");
-
   typing.classList.add("message", "ai-message");
-
   typing.innerHTML = `
-  <div class="avatar"><img src="images/logo.png" alt="Nova" class="avatar-img"></div>
-  <div class="msg-content">...</div>
+    <div class="avatar"><img src="images/logo.png" alt="Nova" class="avatar-img"></div>
+    <div class="msg-content typing-indicator">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
   `;
-
   chatBox.appendChild(typing);
+  chatBox.scrollTop = chatBox.scrollHeight;
 
   try {
     const systemPrompt = `You are NOVA, a helpful AI assistant. ${globalUserProfile && globalUserProfile.prefs ? "User preferences: " + globalUserProfile.prefs : ""}`;
@@ -453,7 +649,6 @@ async function sendMessage() {
     });
 
     const data = await res.json();
-
     typing.remove();
 
     if (data.reply) {
@@ -462,14 +657,19 @@ async function sendMessage() {
         content: data.reply,
       });
 
-      renderMessage("assistant", data.reply);
+      // Fake-stream the response word by word
+      await streamAIMessage(data.reply);
       saveChat();
     }
   } catch (err) {
     typing.remove();
-
-    renderMessage("assistant", "Server error");
+    renderMessage("assistant", "Sorry, something went wrong. Please try again.");
   }
+
+  // Re-enable input
+  chatInput.disabled = false;
+  sendBtn.disabled = false;
+  chatInput.focus();
 }
 
 // ---------------- IMAGE GENERATION ----------------
@@ -516,15 +716,44 @@ function generateImage(prompt) {
   const shimmer = msgDiv.querySelector(".shimmer-placeholder");
   const dlBtn = msgDiv.querySelector(".img-download-btn");
 
-  img.onload = () => {
+  img.onload = async () => {
     shimmer.style.opacity = "0";
     setTimeout(() => shimmer.remove(), 400);
     dlBtn.style.pointerEvents = "auto";
     chatBox.scrollTop = chatBox.scrollHeight;
 
+    // Upload to Cloudinary for persistent storage
+    let permanentUrl = imageUrl; // fallback to Pollinations URL
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+
+      const formData = new FormData();
+      formData.append("file", blob, "nova-image.png");
+      formData.append("upload_preset", CLOUDINARY_PRESET);
+
+      const uploadRes = await fetch(CLOUDINARY_URL, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (uploadRes.ok) {
+        const uploadData = await uploadRes.json();
+        permanentUrl = uploadData.secure_url;
+        console.log("✅ Image uploaded to Cloudinary:", permanentUrl);
+      }
+    } catch (e) {
+      console.error("Cloudinary upload failed, using original URL:", e);
+    }
+
     currentChatHistory.push({
       role: "assistant",
-      content: `[Generated image: ${prompt}]`,
+      content: `[nova-img:${permanentUrl}|${prompt}]`,
     });
     saveChat();
   };
