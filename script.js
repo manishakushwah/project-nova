@@ -59,6 +59,7 @@ let isRecording = false;
 let mediaRecorder = null;
 let currentAudio = null;
 let isImageGenMode = false;
+let isWebSearchMode = false;
 let isStreaming = false;
 let streamingChatId = null;
 
@@ -95,12 +96,40 @@ if (imgGenBtn) {
   imgGenBtn.addEventListener("click", () => {
     isImageGenMode = !isImageGenMode;
     imgGenBtn.classList.toggle("active", isImageGenMode);
-    if (isImageGenMode) {
-      chatInput.placeholder = "Describe an image to generate...";
-    } else {
-      chatInput.placeholder = "Message NOVA...";
+    // Turn off web search if image gen is on
+    if (isImageGenMode && isWebSearchMode) {
+      isWebSearchMode = false;
+      webSearchBtn.classList.remove("active");
     }
+    updateInputPlaceholder();
   });
+}
+
+// ---------------- WEB SEARCH TOGGLE ----------------
+
+const webSearchBtn = document.getElementById("webSearchBtn");
+
+if (webSearchBtn) {
+  webSearchBtn.addEventListener("click", () => {
+    isWebSearchMode = !isWebSearchMode;
+    webSearchBtn.classList.toggle("active", isWebSearchMode);
+    // Turn off image gen if web search is on
+    if (isWebSearchMode && isImageGenMode) {
+      isImageGenMode = false;
+      imgGenBtn.classList.remove("active");
+    }
+    updateInputPlaceholder();
+  });
+}
+
+function updateInputPlaceholder() {
+  if (isWebSearchMode) {
+    chatInput.placeholder = "Search the web...";
+  } else if (isImageGenMode) {
+    chatInput.placeholder = "Describe an image to generate...";
+  } else {
+    chatInput.placeholder = "Message NOVA...";
+  }
 }
 
 // ---------------- DYNAMIC MODALS BINDING ----------------
@@ -442,6 +471,8 @@ function renderMessage(role, content) {
 
     // Check if this is a persisted image message: [nova-img:URL|PROMPT]
     const imgMatch = content.match(/^\[nova-img:(.*?)\|([\s\S]*?)\]$/);
+    // Check if this is a persisted search message: [nova-search:{...}]
+    const searchMatch = content.match(/^\[nova-search:([\s\S]*?)\]$/);
 
     if (imgMatch) {
       const imageUrl = imgMatch[1];
@@ -480,6 +511,68 @@ function renderMessage(role, content) {
           URL.revokeObjectURL(url);
         }, "image/png");
       });
+
+    } else if (searchMatch) {
+      // Persisted search result — re-render with sources
+      try {
+        const searchData = JSON.parse(searchMatch[1]);
+        const cleanMsg = cleanAIContent(searchData.reply);
+        const renderedHtml = marked.parse(cleanMsg);
+        const sources = searchData.sources || [];
+
+        let sourcesHtml = "";
+        if (sources.length > 0) {
+          const cards = sources.map((s) => {
+            const domain = s.siteName || new URL(s.url).hostname;
+            const favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+            return `
+              <a href="${s.url}" target="_blank" rel="noopener" class="source-card">
+                <div class="source-card-header">
+                  <img src="${favicon}" alt="" class="source-favicon">
+                  <span class="source-domain">${domain}</span>
+                </div>
+                <div class="source-title">${s.title || 'Untitled'}</div>
+                <div class="source-snippet">${(s.snippet || '').substring(0, 100)}${s.snippet && s.snippet.length > 100 ? '...' : ''}</div>
+              </a>
+            `;
+          }).join("");
+
+          sourcesHtml = `
+            <div class="search-sources-label"><i class="fa-solid fa-globe"></i> Sources</div>
+            <div class="search-sources-row">${cards}</div>
+          `;
+        }
+
+        msgDiv.innerHTML = `
+          <div class="avatar">
+            <img src="images/logo.png" alt="Nova" class="avatar-img">
+          </div>
+          <div class="msg-content search-msg-content">
+            <div class="search-badge"><i class="fa-solid fa-globe"></i> Web Search</div>
+            <button class="tts-btn"><i class="fa-solid fa-volume-high"></i></button>
+            <div class="msg-text">${renderedHtml}</div>
+            ${sourcesHtml}
+          </div>
+        `;
+
+        msgDiv.querySelectorAll("pre code").forEach((block) => {
+          hljs.highlightElement(block);
+        });
+        addCopyButtons(msgDiv);
+
+        const btn = msgDiv.querySelector(".tts-btn");
+        btn.onclick = () => {
+          const ttsText = cleanMsg.replace(/[*#_=`~\[\]]/g, "").trim();
+          playTTS(ttsText || "No text available.", btn);
+        };
+      } catch (e) {
+        console.error("Failed to parse search result:", e);
+        const cleanMsg = cleanAIContent(content);
+        msgDiv.innerHTML = `
+          <div class="avatar"><img src="images/logo.png" alt="Nova" class="avatar-img"></div>
+          <div class="msg-content"><div class="msg-text">${marked.parse(cleanMsg)}</div></div>
+        `;
+      }
 
     } else {
       // Normal text message — render with markdown
@@ -610,6 +703,11 @@ async function sendMessage() {
     return;
   }
 
+  if (isWebSearchMode) {
+    await webSearch(msg);
+    return;
+  }
+
   // Disable input while processing
   chatInput.disabled = true;
   sendBtn.disabled = true;
@@ -670,6 +768,161 @@ async function sendMessage() {
   chatInput.disabled = false;
   sendBtn.disabled = false;
   chatInput.focus();
+}
+
+// ---------------- WEB SEARCH ----------------
+
+async function webSearch(query) {
+  chatInput.disabled = true;
+  sendBtn.disabled = true;
+
+  renderMessage("user", query);
+  chatInput.value = "";
+
+  currentChatHistory.push({ role: "user", content: query });
+  saveChat();
+
+  // Searching indicator
+  const searching = document.createElement("div");
+  searching.classList.add("message", "ai-message");
+  searching.innerHTML = `
+    <div class="avatar"><img src="images/logo.png" alt="Nova" class="avatar-img"></div>
+    <div class="msg-content typing-indicator search-indicator">
+      <i class="fa-solid fa-globe fa-spin" style="margin-right:8px;opacity:0.6;"></i>
+      <span>Searching the web...</span>
+    </div>
+  `;
+  chatBox.appendChild(searching);
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/web-search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+
+    const data = await res.json();
+    searching.remove();
+
+    if (data.reply) {
+      // Save as special format for chat history
+      const sources = data.sources || [];
+      const historyContent = `[nova-search:${JSON.stringify({ reply: data.reply, sources })}]`;
+
+      currentChatHistory.push({ role: "assistant", content: historyContent });
+
+      // Render the search result
+      await renderSearchResult(data.reply, sources);
+      saveChat();
+    }
+  } catch (err) {
+    searching.remove();
+    console.error("Web search error:", err);
+    renderMessage("assistant", "Sorry, the web search failed. Please try again.");
+  }
+
+  chatInput.disabled = false;
+  sendBtn.disabled = false;
+  chatInput.focus();
+}
+
+async function renderSearchResult(reply, sources) {
+  const cleanMsg = cleanAIContent(reply);
+
+  const msgDiv = document.createElement("div");
+  msgDiv.classList.add("message", "ai-message");
+
+  // Build source cards HTML
+  let sourcesHtml = "";
+  if (sources && sources.length > 0) {
+    const cards = sources.map((s, i) => {
+      const domain = s.siteName || new URL(s.url).hostname;
+      const favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+      return `
+        <a href="${s.url}" target="_blank" rel="noopener" class="source-card" style="animation-delay:${i * 0.08}s">
+          <div class="source-card-header">
+            <img src="${favicon}" alt="" class="source-favicon">
+            <span class="source-domain">${domain}</span>
+          </div>
+          <div class="source-title">${s.title || 'Untitled'}</div>
+          <div class="source-snippet">${(s.snippet || '').substring(0, 100)}${s.snippet && s.snippet.length > 100 ? '...' : ''}</div>
+        </a>
+      `;
+    }).join("");
+
+    sourcesHtml = `
+      <div class="search-sources-label"><i class="fa-solid fa-globe"></i> Sources</div>
+      <div class="search-sources-row">${cards}</div>
+    `;
+  }
+
+  msgDiv.innerHTML = `
+    <div class="avatar">
+      <img src="images/logo.png" alt="Nova" class="avatar-img">
+    </div>
+    <div class="msg-content search-msg-content">
+      <div class="search-badge"><i class="fa-solid fa-globe"></i> Web Search</div>
+      <button class="tts-btn hide"><i class="fa-solid fa-volume-high"></i></button>
+      <div class="msg-text"></div>
+      ${sourcesHtml}
+    </div>
+  `;
+  chatBox.appendChild(msgDiv);
+
+  // Stream the text content
+  const textEl = msgDiv.querySelector(".msg-text");
+  const ttsBtn = msgDiv.querySelector(".tts-btn");
+
+  const cursor = document.createElement("span");
+  cursor.className = "streaming-cursor";
+  cursor.textContent = "▍";
+
+  isStreaming = true;
+  streamingChatId = currentChatId;
+
+  const tokens = cleanMsg.split(/(\s+)/);
+  let buffer = "";
+
+  for (let i = 0; i < tokens.length; i++) {
+    if (!isStreaming || streamingChatId !== currentChatId) break;
+
+    buffer += tokens[i];
+
+    if (i % 2 === 0 || i === tokens.length - 1) {
+      textEl.innerHTML = marked.parse(buffer);
+      const lastChild = textEl.lastElementChild || textEl;
+      lastChild.appendChild(cursor);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    const word = tokens[i].trim();
+    let delay = 20;
+    if (!word) delay = 3;
+    else if (word.length > 10) delay = 35;
+    else if (".!?".includes(word.slice(-1))) delay = 80;
+    else if (",;:".includes(word.slice(-1))) delay = 45;
+
+    await new Promise((r) => setTimeout(r, delay));
+  }
+
+  isStreaming = false;
+  streamingChatId = null;
+
+  textEl.innerHTML = marked.parse(cleanMsg);
+
+  msgDiv.querySelectorAll("pre code").forEach((block) => {
+    hljs.highlightElement(block);
+  });
+  addCopyButtons(msgDiv);
+
+  ttsBtn.classList.remove("hide");
+  ttsBtn.onclick = () => {
+    const ttsText = cleanMsg.replace(/[*#_=`~\[\]]/g, "").trim();
+    playTTS(ttsText || "No text available.", ttsBtn);
+  };
+
+  chatBox.scrollTop = chatBox.scrollHeight;
 }
 
 // ---------------- IMAGE GENERATION ----------------

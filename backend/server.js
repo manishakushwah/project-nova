@@ -155,6 +155,107 @@ app.post("/api/speech-to-text", upload.single("audio"), async (req, res) => {
   }
 });
 
+// ---------------- WEB SEARCH (Tinyfish) ----------------
+
+const TINYFISH_API_KEY = process.env.TINYFISH_API_KEY;
+
+app.post("/api/web-search", async (req, res) => {
+  try {
+    const { query, chatHistory } = req.body;
+
+    if (!query) {
+      return res.status(400).json({ error: "query required" });
+    }
+
+    // Step 1: Search using Tinyfish Search API
+    const searchUrl = `https://api.search.tinyfish.ai?query=${encodeURIComponent(query)}&location=US&language=en`;
+    const searchRes = await axios.get(searchUrl, {
+      headers: { "X-API-Key": TINYFISH_API_KEY },
+      timeout: 30000,
+    });
+
+    const searchResults = searchRes.data.results || [];
+    const sources = searchResults.slice(0, 5).map((r) => ({
+      position: r.position,
+      title: r.title,
+      snippet: r.snippet,
+      url: r.url,
+      siteName: r.site_name,
+    }));
+
+    if (sources.length === 0) {
+      return res.json({
+        reply: "I couldn't find any relevant results for that search. Please try a different query.",
+        sources: [],
+      });
+    }
+
+    // Step 2: Fetch content from top 3 URLs using Tinyfish Fetch API
+    const urlsToFetch = sources.slice(0, 3).map((s) => s.url);
+    let fetchedContent = [];
+
+    try {
+      const fetchRes = await axios.post(
+        "https://api.fetch.tinyfish.ai",
+        {
+          urls: urlsToFetch,
+          format: "markdown",
+        },
+        {
+          headers: {
+            "X-API-Key": TINYFISH_API_KEY,
+            "Content-Type": "application/json",
+          },
+          timeout: 120000,
+        }
+      );
+
+      fetchedContent = (fetchRes.data.results || []).map((r) => ({
+        url: r.url,
+        title: r.title || "",
+        text: (r.text || "").substring(0, 3000), // Limit per page
+      }));
+    } catch (fetchErr) {
+      console.error("Fetch step failed, using snippets only:", fetchErr.message);
+      // Fall back to using snippets from search results
+      fetchedContent = sources.slice(0, 3).map((s) => ({
+        url: s.url,
+        title: s.title,
+        text: s.snippet,
+      }));
+    }
+
+    // Step 3: Build context and ask Sarvam AI to summarize
+    let context = "Here is information from the web to answer the user's question:\n\n";
+    fetchedContent.forEach((page, i) => {
+      context += `--- Source ${i + 1}: ${page.title} (${page.url}) ---\n`;
+      context += page.text + "\n\n";
+    });
+
+    const systemPrompt = `You are NOVA, a helpful AI assistant with web search capability. The user asked a question and you searched the web for the answer. Use the provided web sources to give a comprehensive, accurate answer. Always cite your sources by mentioning the source title or number. If the sources don't contain enough information, say so. Format your response in markdown.`;
+
+    const messages = [
+      { role: "user", content: `[System Instructions: ${systemPrompt}]\n\n${context}\n\nUser's question: ${query}` },
+    ];
+
+    const aiResponse = await sarvamClient.chat.completions({
+      messages: messages,
+      temperature: 0.2,
+    });
+
+    let reply = aiResponse.choices[0].message.content;
+    reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+    reply = reply.replace(/<\/?think>/gi, "").trim();
+
+    console.log("Web Search Reply:", reply.substring(0, 100) + "...");
+
+    res.json({ reply, sources });
+  } catch (err) {
+    console.error("Web search error:", err.message || err);
+    res.status(500).json({ error: "Web search failed" });
+  }
+});
+
 // ---------------- START SERVER ----------------
 
 app.listen(port, () => {
