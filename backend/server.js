@@ -62,6 +62,7 @@ app.post("/api/chat", async (req, res) => {
     const response = await sarvamClient.chat.completions({
       messages: filtered,
       temperature: 0.2,
+      model: "sarvam-105b",
     });
 
     let reply = response.choices[0].message.content;
