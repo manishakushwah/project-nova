@@ -63,6 +63,7 @@ app.post("/api/chat", async (req, res) => {
       model: "sarvam-105b",
       messages: filtered,
       temperature: 0.2,
+      model: "sarvam-105b",
     });
 
     let reply = response.choices[0].message.content;
