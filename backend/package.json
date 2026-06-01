@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "set NODE_ENV=test&& node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "keywords": [],
   "author": "",
@@ -18,7 +18,12 @@
     "express": "^5.2.1",
     "form-data": "^4.0.5",
     "multer": "^2.0.2",
-    "sarvamai": "^1.1.4",
+    "sarvamai": "^1.1.7",
     "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.4.1",
+    "jest": "^30.4.2",
+    "supertest": "^7.2.2"
   }
 }
