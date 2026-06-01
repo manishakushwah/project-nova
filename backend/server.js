@@ -60,6 +60,7 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const response = await sarvamClient.chat.completions({
+      model: "sarvam-105b",
       messages: filtered,
       temperature: 0.2,
     });
@@ -96,7 +97,7 @@ app.post("/api/text-to-speech", async (req, res) => {
 
     const response = await sarvamClient.textToSpeech.convert({
       text: text,
-      target_language_code: "hi-IN",
+      target_language_code: "en-IN",
       speaker: "shubh",
       model: "bulbul:v3",
     });
@@ -239,6 +240,7 @@ app.post("/api/web-search", async (req, res) => {
     ];
 
     const aiResponse = await sarvamClient.chat.completions({
+      model: "sarvam-105b",
       messages: messages,
       temperature: 0.2,
     });
@@ -258,6 +260,11 @@ app.post("/api/web-search", async (req, res) => {
 
 // ---------------- START SERVER ----------------
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+// Skip listen when running tests — Supertest creates its own server
+if (process.env.NODE_ENV !== "test") {
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+  });
+}
+
+export default app;
